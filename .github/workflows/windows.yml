@@ -1,154 +1,88 @@
 name: windows
-
-# build on c/cpp changes or workflow changes
 on:
-  push:
-    paths:
-      - 'lib/**.[ch]'
-      - 'lib/**.cpp'
-      - 'src/**.[ch]'
-      - 'src/**.cpp'
-      - 'irr/**.[ch]'
-      - 'irr/**.cpp'
-      - '**/CMakeLists.txt'
-      - 'cmake/Modules/**'
-      - 'po/**.po'
-      - 'util/buildbot/**'
-      - 'misc/*'
-      - '.github/workflows/windows.yml'
-  pull_request:
-    paths:
-      - 'lib/**.[ch]'
-      - 'lib/**.cpp'
-      - 'src/**.[ch]'
-      - 'src/**.cpp'
-      - 'irr/**.[ch]'
-      - 'irr/**.cpp'
-      - '**/CMakeLists.txt'
-      - 'cmake/Modules/**'
-      - 'po/**.po'
-      - 'util/buildbot/**'
-      - 'misc/*'
-      - '.github/workflows/windows.yml'
-
+  workflow_dispatch:
 jobs:
-  mingw:
-    name: "MinGW cross-compiler (${{ matrix.config.bits }}-bit)"
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - { bits: 32, nsis: false }
-          - { bits: 64, nsis: true }
+  build-windows-x64:
+    runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
-      - name: Install compiler
+      - name: Checkout Luanti 5.13-fp
+        uses: actions/checkout@v4
+        with:
+          repository: skylord-at-hub/luanti
+          ref: "5.13-fp"
+          submodules: recursive
+
+      - name: Setup MSVC
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install dependencies via vcpkg
         run: |
-          source ./util/ci/common.sh
-          install_mingw_deps '${{matrix.config.bits}}' '${{matrix.config.nsis}}'
-          if '${{matrix.config.nsis}}'; then
-            echo 'CMAKE_CXX_COMPILER_LAUNCHER=ccache' >>$GITHUB_ENV
-          fi
-          sudo ./util/buildbot/download_toolchain.sh /usr
+          git clone https://github.com/microsoft/vcpkg
+          .\vcpkg\bootstrap-vcpkg.bat
+          .\vcpkg\vcpkg install `
+            freetype:x64-windows `
+            gettext:x64-windows `
+            gmp:x64-windows `
+            hiredis:x64-windows `
+            libjpeg-turbo:x64-windows `
+            jsoncpp:x64-windows `
+            leveldb:x64-windows `
+            libogg:x64-windows `
+            libpng:x64-windows `
+            libvorbis:x64-windows `
+            luajit:x64-windows `
+            zstd:x64-windows `
+            sdl2:x64-windows `
+            openal-soft:x64-windows
+
+      - name: Configure (CMake)
+        run: |
+          cmake -B build `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="${PWD}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DBUILD_CLIENT=TRUE `
+            -DBUILD_SERVER=FALSE `
+            -DENABLE_GETTEXT=TRUE `
+            -DENABLE_FREETYPE=TRUE `
+            -DENABLE_LEVELDB=TRUE `
+            -DENABLE_REDIS=TRUE `
+            -DENABLE_SOUND=TRUE `
+            -DCMAKE_INSTALL_PREFIX="${PWD}/build/windows"
 
       - name: Build
-        run: |
-           EXISTING_MINETEST_DIR=$PWD \
-           ./util/buildbot/buildwin${{ matrix.config.bits }}.sh B
-           mkdir -p artifact
-           cp -v B/build/*.zip artifact/
+        run: cmake --build build --config Release --parallel
 
-      # Check that the resulting binary can run (DLLs etc.)
-      - name: Runtime test
-        run: |
-          dest=$(mktemp -d)
-          unzip -q -d "$dest" artifact/*.zip
-          cd "$dest"/luanti-*-win*
-          wine bin/luanti.exe --version
+      - name: Install
+        run: cmake --install build --config Release
 
-      - name: Build for NSIS
+      - name: Package as ZIP
         run: |
-           EXISTING_MINETEST_DIR=$PWD \
-           ./util/buildbot/buildwin${{ matrix.config.bits }}.sh B -DRUN_IN_PLACE=0
-           dest=$(mktemp -d)
-           unzip -q -d "$dest" B/build/*.zip
-           cd "$dest"/luanti-*-nsis
-           makensis -WX -V3 sfx-launcher.nsi
-           cp -v "$dest"/*.exe $GITHUB_WORKSPACE/artifact/
-        if: ${{ matrix.config.nsis }}
+          cd build
+          cpack -G ZIP -B windows
+          cd windows
+          Get-ChildItem -Filter *.zip | Rename-Item -NewName { $_.Name -replace '\.zip$', '-x64-fastplace.zip' }
+        shell: powershell
 
-      - uses: actions/upload-artifact@v7
+      - name: Upload artifact (backup, 7 days)
+        uses: actions/upload-artifact@v4
         with:
-          archive: false
-          path: artifact/*.zip
-          if-no-files-found: error
+          name: luanti-5.13.0-windows-x64-fastplace
+          path: ./build/windows/*.zip
 
-      - uses: actions/upload-artifact@v7
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          archive: false
-          path: artifact/*.exe
-          if-no-files-found: error
-        if: ${{ matrix.config.nsis }}
-
-  msvc:
-    name: VS 2022 ${{ matrix.config.arch }}
-    runs-on: windows-2025
-    env:
-      VCPKG_DEFAULT_TRIPLET: ${{matrix.config.vcpkg_triplet}}
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - {
-              arch: x86,
-              generator: "-G'Visual Studio 17 2022' -A Win32",
-              vcpkg_triplet: x86-windows
-            }
-          - {
-              arch: x64,
-              generator: "-G'Visual Studio 17 2022' -A x64",
-              vcpkg_triplet: x64-windows
-            }
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Restore from cache and run vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: '${{ github.workspace }}\vcpkg'
-
-      - name: CMake
-        # Note: See #15976 for why CMAKE_POLICY_VERSION_MINIMUM=3.5 is set.
-        run: |
-          cmake ${{matrix.config.generator}}  `
-          -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake"  `
-          -DCMAKE_BUILD_TYPE=Release  `
-          -DCMAKE_POLICY_VERSION_MINIMUM=3.5  `
-          -DENABLE_POSTGRESQL=OFF  `
-          -DENABLE_LUAJIT=TRUE  `
-          -DREQUIRE_LUAJIT=TRUE  `
-          -DRUN_IN_PLACE=1 .
-
-      - name: Build
-        run: cmake --build . --config Release
-
-      - name: Unittests
-        # need this workaround for stdout to work
-        run: |
-          $proc = start .\bin\Release\luanti.exe --run-unittests -NoNewWindow -Wait -PassThru
-          exit $proc.ExitCode
-        continue-on-error: true # FIXME!!
-
-      - name: CPack
-        run: |
-          cpack -G ZIP -B "$env:GITHUB_WORKSPACE\Package"
-          rm -r $env:GITHUB_WORKSPACE\Package\_CPack_Packages
-          Get-ChildItem "$env:GITHUB_WORKSPACE\Package\*.zip" | Rename-Item -NewName { $_.Name -replace '\.zip$', '-msvc.zip' }
-
-      - uses: actions/upload-artifact@v7
-        with:
-          archive: false
-          path: .\Package\
-          if-no-files-found: error
+          tag_name: "5.13.0-windows-x64"
+          name: "Luanti 5.13.0 - Windows x64 (fastplace)"
+          body: |
+            Luanti (formerly Minetest) **5.13.0** built for **Windows x64**.
+            ### Install
+            1. Download the .zip below
+            2. Extract the folder
+            3. Run `luanti.exe`
+          files: ./build/windows/*.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
