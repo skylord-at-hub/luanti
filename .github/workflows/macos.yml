@@ -8,7 +8,7 @@ jobs:
       - name: Checkout Luanti 5.13.0
         uses: actions/checkout@v4
         with:
-          repository: luanti-org/luanti
+          repository: skylord-at-hub/luanti
           ref: "5.13-fp"
           submodules: recursive
       - name: Install dependencies via Homebrew
@@ -81,16 +81,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "5.13.0-macos-arm64"
-          name: "Luanti 5.13.0 — macOS Apple Silicon (arm64)"
+          name: "Luanti 5.13.0 - macOS Apple Silicon (arm64)"
           body: |
             Luanti (formerly Minetest) **5.13.0** built for **macOS Apple Silicon (arm64)**.
-            **Compatible with:** M1 / M2 / M3 / M4 Macs (including MacBook Air 2025)
-            **Tested on:** macOS Tahoe 26.5.1
-            **Architecture:** arm64 (native, no Rosetta)
             ### Install
             1. Download the .zip below
             2. Extract and drag luanti.app to your Applications folder
-            3. On first launch, right-click → Open (to bypass Gatekeeper)
+            3. Launch
           files: ./build/macos/*.zip
           draft: false
           prerelease: false
