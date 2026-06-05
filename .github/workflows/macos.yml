@@ -1,122 +1,95 @@
 name: macos
-
-# build on c/cpp changes or workflow changes
 on:
-  push:
-    paths:
-      - 'lib/**.[ch]'
-      - 'lib/**.cpp'
-      - 'src/**.[ch]'
-      - 'src/**.cpp'
-      - 'irr/**.[ch]'
-      - 'irr/**.cpp'
-      - 'irr/**.mm' # Objective-C(++)
-      - '**/CMakeLists.txt'
-      - 'cmake/Modules/**'
-      - 'po/**.po'
-      - 'util/ci/**'
-      - '.github/workflows/macos.yml'
-  pull_request:
-    paths:
-      - 'lib/**.[ch]'
-      - 'lib/**.cpp'
-      - 'src/**.[ch]'
-      - 'src/**.cpp'
-      - 'irr/**.[ch]'
-      - 'irr/**.cpp'
-      - 'irr/**.mm' # Objective-C(++)
-      - '**/CMakeLists.txt'
-      - 'cmake/Modules/**'
-      - 'po/**.po'
-      - 'util/ci/**'
-      - '.github/workflows/macos.yml'
-
+  workflow_dispatch:
 jobs:
-  build-older-macos:
-    strategy:
-      matrix:
-        osver: [11.3]
-        xcodever: [16.2]
-        arch: ["x86_64"]
-        build_type: ["Debug"]
-        xcode: ["no"]
-        include:
-          - osver: 11.3
-            xcodever: 16.2
-            arch: "x86_64"
-            build_type: "Debug"
-            xcode: "no"
-          - osver: 11.3
-            xcodever: 16.2
-            arch: "arm64"
-            build_type: "Release"
-            xcode: "yes"
+  build-macos-arm64:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Prepare environment
+      - name: Checkout Luanti 5.13.0
+        uses: actions/checkout@v4
+        with:
+          repository: luanti-org/luanti
+          ref: "5.13-fp"
+          submodules: recursive
+      - name: Install dependencies via Homebrew
         run: |
-          echo "REPDIR=$(pwd)" >> $GITHUB_ENV
-          echo "osver=${{matrix.osver}}" >> $GITHUB_ENV
-          echo "xcodever=${{matrix.xcodever}}" >> $GITHUB_ENV
-          echo "arch=${{matrix.arch}}" >> $GITHUB_ENV
-          echo "build_type=${{matrix.build_type}}" >> $GITHUB_ENV
-
-      - name: Install deps
+          export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
+          export HOMEBREW_NO_INSTALL_CLEANUP=1
+          brew update --auto-update
+          brew install \
+            cmake \
+            ninja \
+            freetype \
+            gettext \
+            gmp \
+            hiredis \
+            jpeg-turbo \
+            jsoncpp \
+            leveldb \
+            libogg \
+            libpng \
+            libvorbis \
+            luajit \
+            zstd \
+            sdl2 \
+            openal-soft
+      - name: Configure (CMake)
         run: |
-          mkdir downloads
-          source ./util/ci/common.sh
-          source ./util/ci/macos_sdk.sh
-          install_macos_precompiled_deps $osver $arch
-          install_macos_sdk $osver "$xcodever" downloads
-
-      - name: Build with GNU Make
+          cmake -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DBUILD_CLIENT=TRUE \
+            -DBUILD_SERVER=FALSE \
+            -DENABLE_GETTEXT=TRUE \
+            -DENABLE_FREETYPE=TRUE \
+            -DENABLE_LEVELDB=TRUE \
+            -DENABLE_REDIS=TRUE \
+            -DENABLE_SOUND=TRUE \
+            -DCMAKE_FIND_FRAMEWORK=LAST \
+            -DCMAKE_INSTALL_PREFIX="${PWD}/build/macos"
+      - name: Build
+        run: cmake --build build --parallel $(sysctl -n hw.logicalcpu)
+      - name: Install into .app bundle
+        run: cmake --install build
+      - name: Codesign for local use
         run: |
-          mkdir build
-          cd build
-          export DEPS_DIR=/Users/Shared/macos${osver}_${arch}_deps
-          export USE_XCODE=no
-          ../util/ci/build_macos.sh
-
-      - name: Build and Archive with Xcode
-        if: ${{matrix.xcode == 'yes'}}
-        run: |
-          mkdir build_xcode
-          cd build_xcode
-          export DEPS_DIR=/Users/Shared/macos${osver}_${arch}_deps
-          export USE_XCODE=yes
-          ../util/ci/build_macos.sh
-
-      - name: Test GNU Make build
+          codesign --force --deep -s - \
+            --entitlements misc/macos/entitlements/debug.entitlements \
+            build/macos/luanti.app
+      - name: Run unit tests
         run: |
           mkdir -p "${HOME}/Library/Application Support/minetest/games/"
-          ln -s "${PWD}/games/devtest" "${HOME}/Library/Application Support/minetest/games/"
+          ln -s "${PWD}/games/devtest" \
+            "${HOME}/Library/Application Support/minetest/games/"
           ./build/macos/luanti.app/Contents/MacOS/luanti --run-unittests
-
-      - name: Test XCode build
-        if: ${{matrix.xcode == 'yes'}}
-        run: |
-          ./build_xcode/build/${build_type}/luanti.app/Contents/MacOS/luanti --run-unittests
-          ./build_xcode/luanti.xcarchive/Products/Applications/luanti.app/Contents/MacOS/luanti --run-unittests
-
-      - name: Diff Resources
-        if: ${{matrix.xcode == 'yes'}}
-        run: |
-          diff -rd ./build/macos/luanti.app/Contents/Resources ./build_xcode/build/${build_type}/luanti.app/Contents/Resources || exit 1
-          diff -rd ./build/macos/luanti.app/Contents/Resources ./build_xcode/luanti.xcarchive/Products/Applications/luanti.app/Contents/Resources || exit 1
-      # Zipping the built .app preserves permissions on the contained files,
-      #   which the GitHub artifact pipeline would otherwise strip away.
-      - name: CPack
+      - name: Package as ZIP
         run: |
           cd build
-          rm -rf macos
           cpack -G ZIP -B macos
-          set -- macos/*.zip
-          mv "$1" "${1%.zip}${osver}-${arch}.zip"
-
-      - name: Upload
-        uses: actions/upload-artifact@v7
+          cd macos
+          for f in *.zip; do
+            mv "$f" "${f%.zip}-arm64-tahoe.zip"
+          done
+      - name: Upload artifact (backup, 7 days)
+        uses: actions/upload-artifact@v4
         with:
-          archive: false
+          name: luanti-5.13.0-macos-arm64-tahoe
           path: ./build/macos/*.zip
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "5.13.0-macos-arm64"
+          name: "Luanti 5.13.0 - macOS Apple Silicon (arm64)"
+          body: |
+            Luanti (formerly Minetest) **5.13.0** built for **macOS Apple Silicon (arm64)**.
+            ### Install
+            1. Download the .zip below
+            2. Extract and drag luanti.app to your Applications folder
+            3. Launch
+          files: ./build/macos/*.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
