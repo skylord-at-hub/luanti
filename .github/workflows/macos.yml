@@ -8,7 +8,7 @@ jobs:
       - name: Checkout Luanti 5.13.0
         uses: actions/checkout@v4
         with:
-          repository: luanti-org/luanti
+          repository: skylord-at-hub/luanti
           ref: "5.13-fp"
           submodules: recursive
       - name: Install dependencies via Homebrew
