@@ -57,6 +57,9 @@ jobs:
         run: |
           $src = "$PWD\vcpkg\installed\x64-windows\bin"
           $dst = "$PWD\build\windows\bin"
+          if (!(Test-Path $src)) {
+            $src = "$PWD\vcpkg_installed\x64-windows\bin"
+          }
           New-Item -ItemType Directory -Force -Path $dst
           Copy-Item "$src\*.dll" $dst -Force
         shell: powershell
