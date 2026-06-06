@@ -15,17 +15,43 @@ jobs:
       - name: Setup MSVC
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install dependencies via vcpkg
+      - name: Setup vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg
-          .\vcpkg\bootstrap-vcpkg.bat
-          .\vcpkg\vcpkg install --triplet x64-windows
+          .\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+        shell: powershell
+
+      - name: Install dependencies via vcpkg
+        run: |
+          .\vcpkg\vcpkg install `
+            freetype:x64-windows `
+            gettext:x64-windows `
+            gmp:x64-windows `
+            hiredis:x64-windows `
+            libjpeg-turbo:x64-windows `
+            jsoncpp:x64-windows `
+            leveldb:x64-windows `
+            libogg:x64-windows `
+            libpng:x64-windows `
+            libvorbis:x64-windows `
+            luajit:x64-windows `
+            zstd:x64-windows `
+            sdl2:x64-windows `
+            openal-soft:x64-windows `
+            openssl:x64-windows `
+            curl:x64-windows `
+            sqlite3:x64-windows `
+            zlib:x64-windows
+        shell: powershell
+        env:
+          VCPKG_DEFAULT_TRIPLET: x64-windows
 
       - name: Configure (CMake)
         run: |
           cmake -B build `
+            -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE="${PWD}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=x64-windows `
             -DBUILD_CLIENT=TRUE `
             -DBUILD_SERVER=FALSE `
@@ -34,13 +60,24 @@ jobs:
             -DENABLE_LEVELDB=TRUE `
             -DENABLE_REDIS=TRUE `
             -DENABLE_SOUND=TRUE `
-            -DCMAKE_INSTALL_PREFIX="${PWD}/build/windows"
+            -DCMAKE_INSTALL_PREFIX="$PWD/build/windows"
+        shell: powershell
 
       - name: Build
         run: cmake --build build --config Release --parallel
+        shell: powershell
 
       - name: Install
         run: cmake --install build --config Release
+        shell: powershell
+
+      - name: Copy runtime DLLs
+        run: |
+          $src = "$PWD\vcpkg\installed\x64-windows\bin"
+          $dst = "$PWD\build\windows\bin"
+          New-Item -ItemType Directory -Force -Path $dst
+          Copy-Item "$src\*.dll" $dst -Force
+        shell: powershell
 
       - name: Package as ZIP
         run: |
