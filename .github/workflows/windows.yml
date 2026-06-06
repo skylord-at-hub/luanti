@@ -23,25 +23,7 @@ jobs:
 
       - name: Install dependencies via vcpkg
         run: |
-          .\vcpkg\vcpkg install --classic `
-            freetype:x64-windows `
-            gettext:x64-windows `
-            gmp:x64-windows `
-            hiredis:x64-windows `
-            libjpeg-turbo:x64-windows `
-            jsoncpp:x64-windows `
-            leveldb:x64-windows `
-            libogg:x64-windows `
-            libpng:x64-windows `
-            libvorbis:x64-windows `
-            luajit:x64-windows `
-            zstd:x64-windows `
-            sdl2:x64-windows `
-            openal-soft:x64-windows `
-            openssl:x64-windows `
-            curl:x64-windows `
-            sqlite3:x64-windows `
-            zlib:x64-windows
+          .\vcpkg\vcpkg install --triplet x64-windows
         shell: powershell
         env:
           VCPKG_DEFAULT_TRIPLET: x64-windows
