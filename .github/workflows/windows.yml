@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies via vcpkg
         run: |
-          .\vcpkg\vcpkg install `
+          .\vcpkg\vcpkg install --classic `
             freetype:x64-windows `
             gettext:x64-windows `
             gmp:x64-windows `
