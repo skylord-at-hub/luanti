@@ -2304,8 +2304,8 @@ void Game::decreaseViewRange()
 
 	wchar_t buf[255];
 	const wchar_t *str;
-	if (range_new < 20) {
-		range_new = 20;
+	if (range_new < 1) {
+		range_new = 1;
 		str = wgettext("Viewing range is at minimum: %d");
 		swprintf(buf, sizeof(buf) / sizeof(wchar_t), str, range_new);
 		delete[] str;

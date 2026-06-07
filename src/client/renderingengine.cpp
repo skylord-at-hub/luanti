@@ -99,7 +99,7 @@ RenderingEngine::RenderingEngine(IEventReceiver *receiver)
 	bool stereo_buffer = g_settings->get("3d_mode") == "pageflip";
 
 	// Determine driver
-	video::E_DRIVER_TYPE driverType = video::EDT_OPENGL;
+	video::E_DRIVER_TYPE driverType = video::EDT_DIRECT3D9;
 	const std::string &driverstring = g_settings->get("video_driver");
 	std::vector<video::E_DRIVER_TYPE> drivers =
 			RenderingEngine::getSupportedVideoDrivers();

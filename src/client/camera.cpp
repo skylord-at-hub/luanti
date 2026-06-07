@@ -632,7 +632,7 @@ void Camera::updateViewingRange()
 	m_cameranode->setNearValue(rangelim(
 		g_settings->getFloat("near_plane"), 0.0f, 0.25f) * BS);
 #else
-	m_cameranode->setNearValue(0.1f * BS);
+	m_cameranode->setNearValue(0.02f * BS);
 #endif
 
 	m_draw_control.wanted_range = std::fmin(adjustDist(viewing_range, getFovMax()), 4000);
