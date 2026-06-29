@@ -16,7 +16,6 @@ set(CLANG_MINIMUM_VERSION "7.0.1")
 set(VERSION_MAJOR 5)
 set(VERSION_MINOR 13)
 set(VERSION_PATCH 0)
-set(VERSION_EXTRA "fp")
 
 # Change to false for releases
 set(DEVELOPMENT_BUILD FALSE)
